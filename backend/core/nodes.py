@@ -1,11 +1,19 @@
 from typing import Literal
 from langchain_core.messages import SystemMessage, RemoveMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 
 from core.agents import llm
 from core.schemas import State
+from core.agents import llm
+from core.schemas import State
+from langgraph.prebuilt import ToolNode, tools_condition
 
-async def chatbot(state: State):
+async def chatbot(state: State, config: RunnableConfig):
+    # Get the bound LLM from the config or use a default one
+    # Note: We will bind tools during graph construction in graph.py
+    llm_with_tools = config.get("configurable", {}).get("llm_with_tools", llm)
+    
     persona = (
         "You are 'Kraya Agent', a helpful and professional AI assistant. "
         "Your name is Kraya Agent. If asked about your identity or name, "
@@ -22,7 +30,7 @@ async def chatbot(state: State):
     # 3. Construct the message list
     messages = [SystemMessage(content=system_message_content)] + state["messages"]
     
-    response = await llm.ainvoke(messages)
+    response = await llm_with_tools.ainvoke(messages)
     return {"messages": [response]}
 
 async def summarize_conversation(state: State):
@@ -48,3 +56,12 @@ def should_continue(state: State) -> Literal["summarize_conversation", END]:
     if len(messages) > 6:
         return "summarize_conversation"
     return END
+
+
+def agent_condition(state: State) -> Literal["tools", "summarize_conversation", END]:
+    # 1. Check if the last message has a tool call
+    if tools_condition(state) == "tools":
+        return "tools"
+    
+    # 2. Check for summarization using existing logic
+    return should_continue(state)
