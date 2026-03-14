@@ -11,7 +11,12 @@ async def read_root():
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
     try:
-        config = {"configurable": {"thread_id": chat_request.thread_id}}
+        config = {
+            "configurable": {
+                "thread_id": chat_request.thread_id,
+                "llm_with_tools": request.app.state.llm_with_tools
+            }
+        }
         user_message = {"messages": [HumanMessage(content=chat_request.message)]}
         
         graph_app = request.app.state.graph_app

@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+        "tavily-mcp": {
+            "transport": "stdio",
+            "command": "npx",
+            "args": [
+                "-y",
+                "tavily-mcp@latest"
+            ],
+            "env": {
+                "DEFAULT_PARAMETERS": "{\"include_images\": false, \"max_results\": 2, \"search_depth\": \"basic\"}"
+            }
+        }
+    }
+}
