@@ -3,4 +3,4 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-llm = ChatGroq(model="llama-3.1-8b-instant")
+llm = ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct")

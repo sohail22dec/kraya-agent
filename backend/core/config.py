@@ -24,6 +24,7 @@ async def lifespan(app: FastAPI):
         max_size=20,
         kwargs=connection_kwargs,
     ) as pool:
+        app.state.pool = pool
         mcp_tools = await get_mcp_tools()
         llm_with_tools = llm.bind_tools(mcp_tools)
         
