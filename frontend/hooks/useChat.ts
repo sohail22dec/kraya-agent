@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Message, Conversation } from "@/types/chat";
 import { streamMessage, queryKeys } from "@/lib/api";
 import {
     useConversations,
+    useConversation,
     useDeleteConversation,
     useUpdateConversationCache,
 } from "./useConversationQueries";
@@ -31,8 +32,24 @@ export function useChat() {
     const { data: conversations = [], isLoading: isLoadingConversations } =
         useConversations();
 
+    const { data: fullConversation } = useConversation(activeId);
+
     const deleteMutation = useDeleteConversation();
     const updateCache = useUpdateConversationCache();
+
+    // ─── Sync API data with localMessages ─────────────────────────────────────
+    useEffect(() => {
+        if (fullConversation && activeId === fullConversation.id) {
+            // Only set if we don't have local messages or if we want to overwrite
+            // Avoiding overwrite during streaming
+            if (!isStreaming) {
+                setLocalMessages(prev => ({
+                    ...prev,
+                    [activeId]: fullConversation.messages
+                }));
+            }
+        }
+    }, [fullConversation, activeId, isStreaming]);
 
     // ─── Derived state ─────────────────────────────────────────────────────────
     const activeConversation =
@@ -40,7 +57,7 @@ export function useChat() {
 
     const activeMessages: Message[] =
         localMessages[activeId ?? ""] ??
-        activeConversation?.messages ??
+        fullConversation?.messages ??
         [];
 
     // ─── Actions ───────────────────────────────────────────────────────────────
@@ -146,6 +163,7 @@ export function useChat() {
                             ),
                         }));
                     },
+                    convId!,
                     abortRef.current.signal
                 );
 

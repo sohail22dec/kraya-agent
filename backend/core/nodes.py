@@ -53,6 +53,19 @@ async def summarize_conversation(state: State):
     return {"summary": response.content, "messages": delete_messages}
 
 
+async def prune_messages(state: State):
+    """Remove tool messages and tool-calling AI messages to save tokens."""
+    messages = state["messages"]
+    pruned = []
+    for msg in messages:
+        if msg.type == "tool":
+            pruned.append(RemoveMessage(id=msg.id))
+        elif msg.type == "ai" and getattr(msg, "tool_calls", None):
+            pruned.append(RemoveMessage(id=msg.id))
+    
+    return {"messages": pruned}
+
+
 def should_continue(state: State) -> Literal["summarize_conversation", END]:
     messages = state["messages"]
     # If there are more than 6 messages, we summarize
@@ -61,10 +74,14 @@ def should_continue(state: State) -> Literal["summarize_conversation", END]:
     return END
 
 
-def agent_condition(state: State) -> Literal["tools", "summarize_conversation", END]:
+def agent_condition(state: State) -> Literal["tools", "prune_messages"]:
     # 1. Check if the last message has a tool call
     if tools_condition(state) == "tools":
         return "tools"
 
-    # 2. Check for summarization using existing logic
+    # 2. Before ending or summarizing, prune tool tokens
+    return "prune_messages"
+
+
+def after_prune_condition(state: State) -> Literal["summarize_conversation", END]:
     return should_continue(state)

@@ -1,6 +1,6 @@
 import { Message, Conversation } from "@/types/chat";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_BASE = "http://127.0.0.1:8000";
 
 // ─── REST API functions (used by TanStack Query) ─────────────────────────────
 
@@ -47,6 +47,7 @@ export const queryKeys = {
 export async function* streamMessage(
     messages: Message[],
     onChunk: (chunk: string) => void,
+    threadId?: string,
     signal?: AbortSignal
 ): AsyncGenerator<string> {
     const response = await fetch(`${API_BASE}/chat`, {
@@ -60,6 +61,7 @@ export async function* streamMessage(
                 role: m.role,
                 content: m.content,
             })),
+            thread_id: threadId,
         }),
         signal,
     });
