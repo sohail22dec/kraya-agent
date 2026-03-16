@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
         conninfo=DB_URI,
         max_size=20,
         kwargs=connection_kwargs,
+        check=AsyncConnectionPool.check_connection,
     ) as pool:
         app.state.pool = pool
         mcp_tools = await get_mcp_tools()

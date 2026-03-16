@@ -3,7 +3,7 @@ from langchain_core.messages import SystemMessage, RemoveMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END
 
-from core.agents import llm
+from core.agents import summarizer_llm
 from core.schemas import State
 from langgraph.prebuilt import tools_condition
 
@@ -46,7 +46,7 @@ async def summarize_conversation(state: State):
         summary_message = "Create a summary of the conversation below:"
 
     messages = state["messages"] + [SystemMessage(content=summary_message)]
-    response = await llm.ainvoke(messages)
+    response = await summarizer_llm.ainvoke(messages)
 
     # We delete all but the last 2 messages to keep recent context
     delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
@@ -66,12 +66,12 @@ async def prune_messages(state: State):
     return {"messages": pruned}
 
 
-def should_continue(state: State) -> Literal["summarize_conversation", END]:
+def summarization_condition(state: State) -> Literal["summarize_conversation", "chatbot"]:
     messages = state["messages"]
-    # If there are more than 6 messages, we summarize
-    if len(messages) > 6:
+    # If there are more than 4 messages, we summarize before calling the chatbot
+    if len(messages) > 4:
         return "summarize_conversation"
-    return END
+    return "chatbot"
 
 
 def agent_condition(state: State) -> Literal["tools", "prune_messages"]:
@@ -83,5 +83,5 @@ def agent_condition(state: State) -> Literal["tools", "prune_messages"]:
     return "prune_messages"
 
 
-def after_prune_condition(state: State) -> Literal["summarize_conversation", END]:
-    return should_continue(state)
+def after_prune_condition(state: State):
+    return END

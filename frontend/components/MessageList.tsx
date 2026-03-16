@@ -76,9 +76,9 @@ export function MessageList({ messages, onSuggestion }: MessageListProps) {
     return (
         <div
             ref={containerRef}
-            className="flex-1 overflow-y-auto px-4 md:px-8 scrollbar-thin"
+            className="flex-1 overflow-y-auto scrollbar-thin"
         >
-            <div className="max-w-3xl mx-auto">
+            <div className="flex flex-col">
                 {messages.map((message) => (
                     <MessageBubble key={message.id} message={message} />
                 ))}
