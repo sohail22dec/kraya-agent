@@ -6,6 +6,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from core.mcp_client import get_mcp_tools
 from core.graph import create_graph
 from core.agents import llm
+from core.rag import search_knowledge_base
 
 
 @asynccontextmanager
@@ -27,9 +28,11 @@ async def lifespan(app: FastAPI):
     ) as pool:
         app.state.pool = pool
         mcp_tools = await get_mcp_tools()
-        llm_with_tools = llm.bind_tools(mcp_tools)
+        all_tools = mcp_tools + [search_knowledge_base]
         
-        graph_builder = create_graph(mcp_tools)
+        llm_with_tools = llm.bind_tools(all_tools)
+        
+        graph_builder = create_graph(all_tools)
         
         memory = AsyncPostgresSaver(pool)
         await memory.setup()
