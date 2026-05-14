@@ -6,6 +6,10 @@ export interface Message {
     content: string;
     createdAt: Date;
     isStreaming?: boolean;
+    // Research pipeline fields
+    isResearch?: boolean;
+    statusSteps?: string[];       // progress labels shown during research
+    plannedQueries?: string[];    // sub-queries the planner generated
 }
 
 export interface Conversation {
@@ -17,7 +21,7 @@ export interface Conversation {
 }
 
 export interface StreamChunk {
-    type: "token" | "done" | "error";
-    content?: string;
+    type: "content" | "status" | "queries" | "route" | "error" | "done";
+    content?: string | string[];
     error?: string;
 }

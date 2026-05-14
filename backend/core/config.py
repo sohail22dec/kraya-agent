@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from core.mcp_client import get_mcp_tools
+from langchain_tavily import TavilySearch
 from core.graph import create_graph
 from core.agents import llm
 from core.rag import search_knowledge_base
@@ -27,8 +27,8 @@ async def lifespan(app: FastAPI):
         check=AsyncConnectionPool.check_connection,
     ) as pool:
         app.state.pool = pool
-        mcp_tools = await get_mcp_tools()
-        all_tools = mcp_tools + [search_knowledge_base]
+        tavily_tool = TavilySearch(max_results=2)
+        all_tools = [tavily_tool, search_knowledge_base]
         
         llm_with_tools = llm.bind_tools(all_tools)
         

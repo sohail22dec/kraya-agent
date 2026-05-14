@@ -28,7 +28,7 @@ export function useChat() {
 
     const abortRef = useRef<AbortController | null>(null);
 
-    // ─── TanStack Query ────────────────────────────────────────────────────────
+    // ─── TanStack Query ─────────────────────────────────────────────────────
     const { data: conversations = [], isLoading: isLoadingConversations } =
         useConversations();
 
@@ -37,11 +37,9 @@ export function useChat() {
     const deleteMutation = useDeleteConversation();
     const updateCache = useUpdateConversationCache();
 
-    // ─── Sync API data with localMessages ─────────────────────────────────────
+    // ─── Sync API data with localMessages ───────────────────────────────────
     useEffect(() => {
         if (fullConversation && activeId === fullConversation.id) {
-            // Only set if we don't have local messages or if we want to overwrite
-            // Avoiding overwrite during streaming
             if (!isStreaming) {
                 setLocalMessages(prev => ({
                     ...prev,
@@ -51,7 +49,7 @@ export function useChat() {
         }
     }, [fullConversation, activeId, isStreaming]);
 
-    // ─── Derived state ─────────────────────────────────────────────────────────
+    // ─── Derived state ───────────────────────────────────────────────────────
     const activeConversation =
         conversations.find((c) => c.id === activeId) ?? null;
 
@@ -60,7 +58,7 @@ export function useChat() {
         fullConversation?.messages ??
         [];
 
-    // ─── Actions ───────────────────────────────────────────────────────────────
+    // ─── Actions ─────────────────────────────────────────────────────────────
 
     const newConversation = useCallback(() => {
         const id = generateId();
@@ -131,6 +129,9 @@ export function useChat() {
                 content: "",
                 createdAt: new Date(),
                 isStreaming: true,
+                isResearch: false,
+                statusSteps: [],
+                plannedQueries: [],
             };
 
             const previousMessages: Message[] =
@@ -152,23 +153,49 @@ export function useChat() {
             try {
                 let accumulated = "";
 
+                // Helper to update the assistant message in place
+                const updateAssistant = (patch: Partial<Message>) => {
+                    setLocalMessages((prev) => ({
+                        ...prev,
+                        [convId!]: prev[convId!].map((m) =>
+                            m.id === assistantMsg.id ? { ...m, ...patch } : m
+                        ),
+                    }));
+                };
+
                 const gen = streamMessage(
                     [...previousMessages, userMsg],
-                    (chunk) => {
-                        accumulated += chunk;
-                        setLocalMessages((prev) => ({
-                            ...prev,
-                            [convId!]: prev[convId!].map((m) =>
-                                m.id === assistantMsg.id ? { ...m, content: accumulated } : m
-                            ),
-                        }));
+                    {
+                        onContent: (chunk) => {
+                            accumulated += chunk;
+                            updateAssistant({ content: accumulated });
+                        },
+                        onStatus: (label) => {
+                            setLocalMessages((prev) => ({
+                                ...prev,
+                                [convId!]: prev[convId!].map((m) =>
+                                    m.id === assistantMsg.id
+                                        ? {
+                                              ...m,
+                                              statusSteps: [...(m.statusSteps ?? []), label],
+                                          }
+                                        : m
+                                ),
+                            }));
+                        },
+                        onQueries: (queries) => {
+                            updateAssistant({ plannedQueries: queries });
+                        },
+                        onRoute: (route) => {
+                            updateAssistant({ isResearch: route === "research" });
+                        },
                     },
                     convId!,
                     abortRef.current.signal
                 );
 
                 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                for await (const _ of gen) { /* handled in onChunk */ }
+                for await (const _ of gen) { /* handled in callbacks */ }
 
                 const finalMessages = optimisticMessages.map((m) =>
                     m.id === assistantMsg.id

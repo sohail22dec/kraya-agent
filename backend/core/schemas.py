@@ -19,3 +19,9 @@ class ChatResponse(BaseModel):
 class State(TypedDict):
     messages: Annotated[list, add_messages]
     summary: str
+    # Routing decision: "conversational" or "research"
+    route: Optional[str]
+    # Research pipeline intermediate data
+    research_steps: Optional[List[str]]    # status labels emitted during research
+    research_queries: Optional[List[str]]  # sub-queries planned by the research agent
+    sources: Optional[List[dict]]          # deduplicated { title, url } source list

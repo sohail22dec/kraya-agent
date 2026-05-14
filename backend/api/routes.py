@@ -9,9 +9,11 @@ import asyncio
 
 router = APIRouter()
 
+
 @router.get("/")
 async def read_root():
     return {"message": "Welcome to the Kraya Agent API"}
+
 
 @router.post("/chat")
 async def chat_endpoint(request: Request, chat_request: ChatRequest):
@@ -20,63 +22,119 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
             pool = request.app.state.pool
             graph_app = request.app.state.graph_app
             thread_id = chat_request.thread_id or "default"
-            
+
             config = {
                 "configurable": {
                     "thread_id": thread_id,
                     "llm_with_tools": request.app.state.llm_with_tools
                 }
             }
-            
-            # Convert schemas to LangChain messages
+
+            # Only process the very last message to prevent exponential state duplication
             messages = []
-            for msg in chat_request.messages:
-                if msg.role == "user":
-                    messages.append(HumanMessage(content=msg.content))
+            if chat_request.messages:
+                last_msg = chat_request.messages[-1]
+                if last_msg.role == "user":
+                    messages.append(HumanMessage(content=last_msg.content))
                 else:
-                    messages.append(AIMessage(content=msg.content))
+                    messages.append(AIMessage(content=last_msg.content))
 
             # Update/Create conversation metadata
+            title = "New conversation"
             if chat_request.messages:
                 title = chat_request.messages[0].content[:40] + "..."
                 await create_or_update_conversation(pool, thread_id, title)
 
-            # Invoke graph and stream simulated tokens (as per previous logic)
-            result = await graph_app.ainvoke({"messages": messages}, config=config)
-            ai_message = result["messages"][-1]
-            content = ai_message.content
-            
-            # Update metadata again in case we want to update "updated_at"
-            await create_or_update_conversation(pool, thread_id, title)
+            # ── Route classification ──────────────────────────────────────────
+            # We run the router separately BEFORE the graph so we can branch
+            # the SSE stream: research queries get the full pipeline treatment,
+            # conversational queries go straight to graph invocation.
+            from core.router import classify_query
 
-            # Stream tokens
-            for i in range(0, len(content), 4):
-                chunk = content[i:i+4]
-                yield f"data: {json.dumps({'content': chunk})}\n\n"
-                await asyncio.sleep(0.01)
-                
+            user_content = ""
+            if chat_request.messages:
+                user_content = chat_request.messages[-1].content
+
+            route = await classify_query(user_content)
+            yield f"data: {json.dumps({'type': 'route', 'content': route})}\n\n"
+
+            if route == "research":
+                # ── Research path ─────────────────────────────────────────────
+                # 1. Run the full research pipeline, streaming status + content events
+                from core.research_agent import run_research_pipeline
+
+                full_report = ""
+                planned_queries: list[str] = []
+
+                async for event in run_research_pipeline(user_content):
+                    event_type = event.get("type")
+
+                    if event_type == "status":
+                        # Progress indicator — stream to frontend immediately
+                        yield f"data: {json.dumps({'type': 'status', 'content': event['content']})}\n\n"
+                        await asyncio.sleep(0)  # flush buffer
+
+                    elif event_type == "queries":
+                        # Sub-queries the planner generated — optional UI use
+                        planned_queries = event["content"]
+                        yield f"data: {json.dumps({'type': 'queries', 'content': planned_queries})}\n\n"
+                        await asyncio.sleep(0)
+
+                    elif event_type == "content":
+                        # Actual report content — stream each chunk
+                        chunk = event["content"]
+                        full_report += chunk
+                        yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                        await asyncio.sleep(0.005)  # slight delay for typewriter feel
+
+                # 2. Inject the finished report into the graph as an AIMessage so
+                #    LangGraph checkpointer saves it and conversation history works.
+                if full_report:
+                    research_message = AIMessage(content=full_report)
+                    await graph_app.ainvoke(
+                        {"messages": messages + [research_message], "route": "research"},
+                        config=config
+                    )
+
+            else:
+                # ── Conversational path ───────────────────────────────────────
+                # Graph handles everything: routing, tool calls, etc.
+                result = await graph_app.ainvoke({"messages": messages}, config=config)
+                ai_message = result["messages"][-1]
+                content = ai_message.content
+
+                # Stream tokens
+                for i in range(0, len(content), 4):
+                    chunk = content[i:i + 4]
+                    yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+                    await asyncio.sleep(0.01)
+
+            # Update conversation metadata
+            await create_or_update_conversation(pool, thread_id, title)
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 
 @router.get("/conversations")
 async def get_all_conversations(request: Request):
     return await get_conversations(request.app.state.pool)
 
+
 @router.get("/conversations/{id}")
 async def get_single_conversation(request: Request, id: str):
     pool = request.app.state.pool
     graph_app = request.app.state.graph_app
-    
-    # Fetch metadata and history
+
     metadata = await get_conv_metadata(pool, id)
     messages = await get_message_history(graph_app, id)
-    
+
     if not metadata:
-        # If no metadata exists but checkpoints might, return a placeholder
         return {
             "id": id,
             "title": "New Conversation",
@@ -84,12 +142,12 @@ async def get_single_conversation(request: Request, id: str):
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "updatedAt": datetime.now(timezone.utc).isoformat()
         }
-    
-    # Return full Conversation object
+
     return {
         **metadata,
         "messages": [m.dict() for m in messages]
     }
+
 
 @router.delete("/conversations/{id}")
 async def delete_conv(request: Request, id: str):
