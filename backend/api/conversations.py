@@ -17,23 +17,29 @@ class ConversationMetadata:
             "updatedAt": self.updated_at.isoformat()
         }
 
-async def get_conversations(pool) -> List[dict]:
+async def get_conversations(pool, user_id: str | None = None) -> List[dict]:
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
+            if user_id:
+                await cur.execute(
+                    "SELECT id, title, created_at, updated_at FROM conversations WHERE user_id = %s ORDER BY updated_at DESC",
+                    (user_id,)
+                )
+            else:
+                await cur.execute("SELECT id, title, created_at, updated_at FROM conversations ORDER BY updated_at DESC")
             rows = await cur.fetchall()
             return [ConversationMetadata(*row).to_dict() for row in rows]
 
-async def create_or_update_conversation(pool, id: str, title: str):
+async def create_or_update_conversation(pool, id: str, title: str, user_id: str | None = None):
     async with pool.connection() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
-                INSERT INTO conversations (id, title, updated_at)
-                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                INSERT INTO conversations (id, title, user_id, updated_at)
+                VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (id) DO UPDATE SET
                     title = EXCLUDED.title,
                     updated_at = CURRENT_TIMESTAMP
-            """, (id, title))
+            """, (id, title, user_id))
             await conn.commit()
 
 async def delete_conversation(pool, id: str):

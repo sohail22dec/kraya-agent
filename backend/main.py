@@ -8,7 +8,7 @@ load_dotenv()
 
 app = FastAPI(title="Kraya Agent API", lifespan=lifespan)
 
-# Add CORS middleware
+# Add CORS middleware — must list exact origins (not wildcard) when allow_credentials=True
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],

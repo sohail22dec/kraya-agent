@@ -8,6 +8,7 @@ import {
     useDeleteConversation,
     useUpdateConversationCache,
 } from "./useConversationQueries";
+import { useAuth } from "@/providers/AuthProvider";
 
 function generateId() {
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -19,6 +20,7 @@ function getTitle(content: string) {
 
 export function useChat() {
     const queryClient = useQueryClient();
+    const { signOut } = useAuth();
     const [activeId, setActiveId] = useState<string | null>(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -212,12 +214,20 @@ export function useChat() {
             } catch (err: unknown) {
                 if (err instanceof Error && err.name === "AbortError") return;
                 const msg = err instanceof Error ? err.message : "Something went wrong.";
-                setError(msg);
+                
+                // If the session is invalid, force a sign out to refresh the cookie state
+                if (msg.includes("401")) {
+                    signOut();
+                    setError("Your session expired. We've refreshed it—please try again!");
+                } else {
+                    setError(msg);
+                }
+
                 setLocalMessages((prev) => ({
                     ...prev,
                     [convId!]: prev[convId!].map((m) =>
                         m.id === assistantMsg.id
-                            ? { ...m, content: `⚠️ ${msg}`, isStreaming: false }
+                            ? { ...m, content: `⚠️ ${msg.includes("401") ? "Session expired. Please try again." : msg}`, isStreaming: false }
                             : m
                     ),
                 }));

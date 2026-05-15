@@ -25,3 +25,4 @@ class State(TypedDict):
     research_steps: Optional[List[str]]    # status labels emitted during research
     research_queries: Optional[List[str]]  # sub-queries planned by the research agent
     sources: Optional[List[dict]]          # deduplicated { title, url } source list
+    latest_report: Optional[str]           # the most recently generated research report

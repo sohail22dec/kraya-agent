@@ -7,6 +7,7 @@ from langchain_tavily import TavilySearch
 from core.graph import create_graph
 from core.agents import llm
 from core.rag import search_knowledge_base
+from core.tools import save_to_google_docs
 
 
 @asynccontextmanager
@@ -28,7 +29,7 @@ async def lifespan(app: FastAPI):
     ) as pool:
         app.state.pool = pool
         tavily_tool = TavilySearch(max_results=2)
-        all_tools = [tavily_tool, search_knowledge_base]
+        all_tools = [tavily_tool, search_knowledge_base, save_to_google_docs]
         
         llm_with_tools = llm.bind_tools(all_tools)
         

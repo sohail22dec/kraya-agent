@@ -17,6 +17,7 @@ Reply with EXACTLY one word — no punctuation, no explanation:
   * Greetings and small talk (hi, hello, how are you, what's your name)
   * Simple factual questions with well-known stable answers (capital cities, basic math, definitions)
   * Requests about the assistant itself (what can you do, who made you)
+  * Requests to save, store, or export the current report or conversation (e.g., "save this to google docs", "store this report")
   * Follow-up chitchat in an ongoing conversation
 
 - "research" — for:

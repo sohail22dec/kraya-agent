@@ -77,15 +77,15 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed md:relative z-30 flex flex-col h-full bg-[#171717] transition-all duration-300 ease-in-out shrink-0",
+          "fixed md:relative z-30 flex flex-col h-full bg-[#0d0d10] border-r border-white/[0.05] transition-all duration-300 ease-in-out shrink-0",
           isOpen ? "w-64" : "w-0 overflow-hidden",
         )}
       >
         {/* Brand header */}
         <div className="flex items-center justify-between px-3 py-3.5 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-md">
-              <Bot size={14} className="text-white" />
+            <div className="w-7 h-7 rounded-lg bg-white/[0.08] border border-violet-500/20 flex items-center justify-center shadow-md shadow-violet-500/5">
+              <Bot size={14} className="text-violet-400/80" />
             </div>
             <span className="text-sm font-semibold text-white/90 tracking-tight">
               Kraya

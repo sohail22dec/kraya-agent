@@ -1,17 +1,17 @@
 import { Message, Conversation } from "@/types/chat";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://localhost:8000";
 
 // ─── REST API functions (used by TanStack Query) ──────────────────────────────
 
 export async function fetchConversations(): Promise<Conversation[]> {
-    const res = await fetch(`${API_BASE}/conversations`);
+    const res = await fetch(`${API_BASE}/conversations`, { credentials: "include" });
     if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
     return res.json();
 }
 
 export async function fetchConversation(id: string): Promise<Conversation> {
-    const res = await fetch(`${API_BASE}/conversations/${id}`);
+    const res = await fetch(`${API_BASE}/conversations/${id}`, { credentials: "include" });
     if (!res.ok) throw new Error(`Failed to fetch conversation: ${res.status}`);
     return res.json();
 }
@@ -29,6 +29,7 @@ export async function createConversation(title: string): Promise<Conversation> {
 export async function deleteConversationApi(id: string): Promise<void> {
     const res = await fetch(`${API_BASE}/conversations/${id}`, {
         method: "DELETE",
+        credentials: "include",
     });
     if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
 }
@@ -67,6 +68,7 @@ export async function* streamMessage(
             "Content-Type": "application/json",
             Accept: "text/event-stream",
         },
+        credentials: "include",
         body: JSON.stringify({
             messages: messages.map((m) => ({
                 role: m.role,

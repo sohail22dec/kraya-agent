@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Bot, Zap, Code2, FileText, Lightbulb } from "lucide-react";
+import { Bot, Search, TrendingUp, FileText, BookOpen } from "lucide-react";
 import { Message } from "@/types/chat";
 import { MessageBubble } from "./MessageBubble";
 
 const SUGGESTIONS = [
-    { icon: Code2, label: "Help me write", sub: "a Python script for data analysis" },
-    { icon: Lightbulb, label: "Explain", sub: "how LangGraph works" },
-    { icon: FileText, label: "Summarize", sub: "key points from a document" },
-    { icon: Zap, label: "Debug", sub: "my LangChain agent" },
+    { icon: Search, label: "Deep Research", sub: "the impact of AI on the global economy" },
+    { icon: TrendingUp, label: "Analyze Trend", sub: "latest advancements in quantum computing" },
+    { icon: FileText, label: "Summarize Topic", sub: "the history of space exploration" },
+    { icon: BookOpen, label: "Compare Options", sub: "electric vehicles vs hydrogen fuel cells" },
 ];
 
 interface MessageListProps {
@@ -21,8 +21,8 @@ function EmptyState({ onSuggestion }: { onSuggestion?: (text: string) => void })
     return (
         <div className="flex flex-col items-center justify-center h-full gap-8 py-12 px-4">
             <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-xl shadow-violet-900/40">
-                    <Bot size={26} className="text-white" />
+                <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-violet-500/20 flex items-center justify-center shadow-lg shadow-violet-500/5">
+                    <Bot size={26} className="text-violet-400/80" />
                 </div>
                 <div className="text-center">
                     <h2 className="text-xl font-semibold text-white/90 tracking-tight">

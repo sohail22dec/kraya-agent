@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import StreamingResponse
 from core.schemas import ChatRequest
+from core.auth import get_current_user
 from langchain_core.messages import HumanMessage, AIMessage
 from api.conversations import get_conversations, get_conversation as get_conv_metadata, delete_conversation, create_or_update_conversation, get_message_history
 from datetime import datetime, timezone
@@ -16,16 +17,24 @@ async def read_root():
 
 
 @router.post("/chat")
-async def chat_endpoint(request: Request, chat_request: ChatRequest):
+async def chat_endpoint(
+    request: Request,
+    chat_request: ChatRequest,
+    current_user: dict = Depends(get_current_user),
+):
     async def event_generator():
         try:
             pool = request.app.state.pool
             graph_app = request.app.state.graph_app
-            thread_id = chat_request.thread_id or "default"
+            user_id = current_user["id"]
+            # Prefix thread_id with user_id so every user has isolated conversation history
+            raw_thread = chat_request.thread_id or "default"
+            thread_id = f"{user_id}:{raw_thread}"
 
             config = {
                 "configurable": {
                     "thread_id": thread_id,
+                    "user_id": user_id,
                     "llm_with_tools": request.app.state.llm_with_tools
                 }
             }
@@ -43,7 +52,7 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
             title = "New conversation"
             if chat_request.messages:
                 title = chat_request.messages[0].content[:40] + "..."
-                await create_or_update_conversation(pool, thread_id, title)
+                await create_or_update_conversation(pool, raw_thread, title, user_id=user_id)
 
             # ── Route classification ──────────────────────────────────────────
             # We run the router separately BEFORE the graph so we can branch
@@ -92,7 +101,11 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
                 if full_report:
                     research_message = AIMessage(content=full_report)
                     await graph_app.ainvoke(
-                        {"messages": messages + [research_message], "route": "research"},
+                        {
+                            "messages": messages + [research_message],
+                            "route": "research",
+                            "latest_report": full_report
+                        },
                         config=config
                     )
 
@@ -110,7 +123,7 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
                     await asyncio.sleep(0.01)
 
             # Update conversation metadata
-            await create_or_update_conversation(pool, thread_id, title)
+            await create_or_update_conversation(pool, raw_thread, title, user_id=user_id)
             yield "data: [DONE]\n\n"
 
         except Exception as e:
@@ -122,17 +135,26 @@ async def chat_endpoint(request: Request, chat_request: ChatRequest):
 
 
 @router.get("/conversations")
-async def get_all_conversations(request: Request):
-    return await get_conversations(request.app.state.pool)
+async def get_all_conversations(
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+):
+    return await get_conversations(request.app.state.pool, user_id=current_user["id"])
 
 
 @router.get("/conversations/{id}")
-async def get_single_conversation(request: Request, id: str):
+async def get_single_conversation(
+    request: Request,
+    id: str,
+    current_user: dict = Depends(get_current_user),
+):
     pool = request.app.state.pool
     graph_app = request.app.state.graph_app
+    user_id = current_user["id"]
+    scoped_thread_id = f"{user_id}:{id}"
 
     metadata = await get_conv_metadata(pool, id)
-    messages = await get_message_history(graph_app, id)
+    messages = await get_message_history(graph_app, scoped_thread_id)
 
     if not metadata:
         return {
@@ -150,6 +172,10 @@ async def get_single_conversation(request: Request, id: str):
 
 
 @router.delete("/conversations/{id}")
-async def delete_conv(request: Request, id: str):
+async def delete_conv(
+    request: Request,
+    id: str,
+    current_user: dict = Depends(get_current_user),
+):
     await delete_conversation(request.app.state.pool, id)
     return {"status": "ok"}
