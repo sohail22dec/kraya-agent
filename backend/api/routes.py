@@ -54,10 +54,10 @@ async def chat_endpoint(
                 title = chat_request.messages[0].content[:40] + "..."
                 await create_or_update_conversation(pool, raw_thread, title, user_id=user_id)
 
-            # ── Route classification ──────────────────────────────────────────
+            # -- Route classification ------------------------------------------
             # We run the router separately BEFORE the graph so we can branch
             # the SSE stream: research queries get the full pipeline treatment,
-            # conversational queries go straight to graph invocation.
+            # conversational/export queries go straight to graph invocation.
             from core.router import classify_query
 
             user_content = ""
@@ -68,7 +68,7 @@ async def chat_endpoint(
             yield f"data: {json.dumps({'type': 'route', 'content': route})}\n\n"
 
             if route == "research":
-                # ── Research path ─────────────────────────────────────────────
+                # -- Research path ------------------------------------------------
                 # 1. Run the full research pipeline, streaming status + content events
                 from core.research_agent import run_research_pipeline
 
@@ -79,18 +79,15 @@ async def chat_endpoint(
                     event_type = event.get("type")
 
                     if event_type == "status":
-                        # Progress indicator — stream to frontend immediately
                         yield f"data: {json.dumps({'type': 'status', 'content': event['content']})}\n\n"
                         await asyncio.sleep(0)  # flush buffer
 
                     elif event_type == "queries":
-                        # Sub-queries the planner generated — optional UI use
                         planned_queries = event["content"]
                         yield f"data: {json.dumps({'type': 'queries', 'content': planned_queries})}\n\n"
                         await asyncio.sleep(0)
 
                     elif event_type == "content":
-                        # Actual report content — stream each chunk
                         chunk = event["content"]
                         full_report += chunk
                         yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
@@ -110,9 +107,11 @@ async def chat_endpoint(
                     )
 
             else:
-                # ── Conversational path ───────────────────────────────────────
-                # Graph handles everything: routing, tool calls, etc.
-                result = await graph_app.ainvoke({"messages": messages}, config=config)
+                # -- Conversational / Export path ---------------------------------
+                # Both 'conversational' and 'export' routes go through the graph.
+                # The route_condition inside the graph directs 'export' to the
+                # dedicated export_agent node instead of the general chatbot.
+                result = await graph_app.ainvoke({"messages": messages, "route": route}, config=config)
                 ai_message = result["messages"][-1]
                 content = ai_message.content
 

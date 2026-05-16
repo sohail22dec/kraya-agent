@@ -125,7 +125,7 @@ export function Header({
                     </div>
                     <button
                       onClick={async () => {
-                        await authClient.signIn.social({
+                        await authClient.linkSocial({
                           provider: "google",
                           callbackURL: "/",
                         });

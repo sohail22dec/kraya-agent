@@ -31,6 +31,12 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      // Request offline access so Google issues a refresh_token alongside the access_token.
+      // Without this, the access token expires after 1 hour and we can't renew it.
+      accessType: "offline",
+      // Force the consent screen every time so Google always re-issues a refresh_token,
+      // even if the user has previously authorized this app.
+      prompt: "consent",
       scope: [
         "https://www.googleapis.com/auth/documents",
         "https://www.googleapis.com/auth/drive.file",

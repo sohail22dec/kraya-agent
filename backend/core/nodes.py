@@ -30,11 +30,15 @@ async def router_node(state: State) -> dict:
     return {"route": route}
 
 
-def route_condition(state: State) -> Literal["chatbot", "research_node"]:
+def route_condition(
+    state: State,
+) -> Literal["chatbot", "research_node", "export_agent"]:
     """Reads the route set by router_node and directs the graph accordingly."""
     route = state.get("route", "conversational")
     if route == "research":
         return "research_node"
+    if route == "export":
+        return "export_agent"
     return "chatbot"
 
 
@@ -67,8 +71,6 @@ async def chatbot(state: State, config: RunnableConfig):
         "Your name is Kraya Agent. If asked about your identity or name, "
         "always identify as Kraya Agent. Never refer to yourself as Llama, "
         "ChatGPT, or any other LLM. "
-        "You have the capability to save generated research reports directly to a user's Google Docs. "
-        "If a user asks to save, store, or export a report, use the 'save_to_google_docs' tool."
     )
 
     summary = state.get("summary", "")
@@ -80,6 +82,41 @@ async def chatbot(state: State, config: RunnableConfig):
         system_message_content = persona
 
     messages = [SystemMessage(content=system_message_content)] + state["messages"]
+    response = await llm_with_tools.ainvoke(messages)
+    return {"messages": [response]}
+
+
+# ─── Export Agent ───────────────────────────────────────────────────────────────────────────
+
+
+async def export_agent(state: State, config: RunnableConfig):
+    """
+    A dedicated, powerful agent exclusively for saving research reports to Google Docs.
+    Uses the full llm to reduce hallucinations, with a strict system prompt that
+    forbids inventing success messages or document links.
+    """
+    llm_with_tools = config.get("configurable", {}).get("llm_with_tools")
+
+    export_persona = (
+        "You are Kraya's Export Agent. Your only job is to save research reports to Google Docs "
+        "by calling the 'save_to_google_docs' tool.\n\n"
+        "CRITICAL RULES — you MUST follow these without exception:\n"
+        "1. Always call the 'save_to_google_docs' tool. Never skip it.\n"
+        "2. After the tool runs, read its output carefully.\n"
+        "3. If the tool output contains a URL (https://docs.google.com/...), "
+        "report that exact URL to the user. Do NOT invent or modify the URL.\n"
+        "4. If the tool output contains the word 'Error', you MUST copy that error "
+        "message verbatim to the user. Do NOT invent a success response.\n"
+        "5. Never hallucinate. Never say the report was saved if the tool did not confirm it."
+    )
+
+    summary = state.get("summary", "")
+    if summary:
+        system_content = f"{export_persona}\n\nConversation summary: {summary}"
+    else:
+        system_content = export_persona
+
+    messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
     return {"messages": [response]}
 
@@ -134,6 +171,21 @@ def agent_condition(state: State) -> Literal["tools", "prune_messages"]:
     if tools_condition(state) == "tools":
         return "tools"
     return "prune_messages"
+
+
+def export_agent_condition(state: State) -> Literal["tools", "prune_messages"]:
+    """Same as agent_condition but for the export_agent node."""
+    if tools_condition(state) == "tools":
+        return "tools"
+    return "prune_messages"
+
+
+def after_tools_condition(state: State) -> Literal["chatbot", "export_agent"]:
+    """After a tool executes, route back to the agent that called it based on state['route']."""
+    route = state.get("route", "conversational")
+    if route == "export":
+        return "export_agent"
+    return "chatbot"
 
 
 def after_prune_condition(state: State):

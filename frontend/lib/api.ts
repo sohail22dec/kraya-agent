@@ -103,29 +103,32 @@ export async function* streamMessage(
                 const data = line.slice(6).trim();
                 if (data === "[DONE]") return;
 
+                let event;
                 try {
-                    const event = JSON.parse(data);
-                    const { type, content } = event;
-
-                    if (type === "content" && typeof content === "string") {
-                        callbacks.onContent(content);
-                        yield content;
-                    } else if (type === "status" && callbacks.onStatus) {
-                        callbacks.onStatus(content as string);
-                    } else if (type === "queries" && callbacks.onQueries) {
-                        callbacks.onQueries(content as string[]);
-                    } else if (type === "route" && callbacks.onRoute) {
-                        callbacks.onRoute(content as string);
-                    } else if (type === "error") {
-                        throw new Error(content as string);
-                    }
-                    // Legacy fallback: old { content: "..." } format without type
-                    else if (!type && typeof event.content === "string") {
-                        callbacks.onContent(event.content);
-                        yield event.content;
-                    }
+                    event = JSON.parse(data);
                 } catch (parseErr) {
                     // Not JSON — skip silently
+                    continue;
+                }
+
+                const { type, content } = event;
+
+                if (type === "content" && typeof content === "string") {
+                    callbacks.onContent(content);
+                    yield content;
+                } else if (type === "status" && callbacks.onStatus) {
+                    callbacks.onStatus(content as string);
+                } else if (type === "queries" && callbacks.onQueries) {
+                    callbacks.onQueries(content as string[]);
+                } else if (type === "route" && callbacks.onRoute) {
+                    callbacks.onRoute(content as string);
+                } else if (type === "error") {
+                    throw new Error(content as string);
+                }
+                // Legacy fallback: old { content: "..." } format without type
+                else if (!type && typeof event.content === "string") {
+                    callbacks.onContent(event.content);
+                    yield event.content;
                 }
             }
         }
