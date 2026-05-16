@@ -1,56 +1,68 @@
 from fastapi import HTTPException, Request, status
-from psycopg_pool import AsyncConnectionPool
+import httpx
+import os
+
+
+BETTER_AUTH_URL = os.getenv("BETTER_AUTH_URL", "http://localhost:3000")
 
 
 async def get_current_user(request: Request) -> dict:
     """
-    FastAPI dependency that validates the Better Auth session cookie
-    by querying the shared PostgreSQL session table directly.
+    FastAPI dependency that validates the Better Auth session by calling
+    the Better Auth /api/auth/get-session endpoint on the frontend.
+    This is the correct approach for cross-domain auth (Vercel + Render).
     Returns the user dict or raises 401.
     """
-    # Better Auth sets a cookie named 'better-auth.session_token'
-    # On HTTPS (production), it often adds a '__Secure-' prefix.
-    raw_token = request.cookies.get("better-auth.session_token") or request.cookies.get("__Secure-better-auth.session_token")
-    session_token = raw_token.split(".")[0] if raw_token else None
-    
-    print(f"[Auth Debug] Incoming session token: {session_token}")
+    # Forward all cookies from the incoming request to Better Auth
+    cookie_header = request.headers.get("cookie", "")
 
-    if not session_token:
-        print("[Auth Debug] No session token found in cookies.")
+    print(f"[Auth Debug] Forwarding cookie header: {cookie_header[:80]}...")
+
+    if not cookie_header:
+        print("[Auth Debug] No cookies found in request.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
 
-    pool: AsyncConnectionPool = request.app.state.pool
-
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                """
-                SELECT s."userId", u.email, u.name, u."isAnonymous"
-                FROM session s
-                JOIN "user" u ON u.id = s."userId"
-                WHERE s.token = %s AND s."expiresAt" > NOW()
-                """,
-                (session_token,),
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(
+                f"{BETTER_AUTH_URL}/api/auth/get-session",
+                headers={"cookie": cookie_header},
+                timeout=10.0,
             )
-            row = await cur.fetchone()
-            print(f"[Auth Debug] Database lookup result: {row}")
+        except httpx.RequestError as e:
+            print(f"[Auth Debug] Failed to reach Better Auth: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Auth service unreachable",
+            )
 
-    if not row:
-        print("[Auth Debug] Session expired or invalid (not found in DB).")
+    print(f"[Auth Debug] Better Auth response status: {resp.status_code}")
+
+    if resp.status_code != 200:
+        print(f"[Auth Debug] Better Auth returned non-200: {resp.text}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session expired or invalid",
         )
 
-    user_id, email, name, is_anonymous = row
+    data = resp.json()
+    print(f"[Auth Debug] Session data: {data}")
+
+    if not data or not data.get("user"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired or invalid",
+        )
+
+    user = data["user"]
     return {
-        "id": user_id,
-        "email": email,
-        "name": name,
-        "is_anonymous": bool(is_anonymous),
+        "id": user.get("id"),
+        "email": user.get("email"),
+        "name": user.get("name"),
+        "is_anonymous": user.get("isAnonymous", False),
     }
 
 
