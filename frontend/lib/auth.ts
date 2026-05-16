@@ -15,6 +15,12 @@ const prisma = new PrismaClient({ adapter } as never);
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET || "fallback-secret",
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: "none",
+      secure: true,
+    },
+  },
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
@@ -52,11 +58,16 @@ export const auth = betterAuth({
           // Transfer all conversations from the temporary anonymous user to the new permanent user
           await pool.query(
             "UPDATE conversations SET user_id = $1 WHERE user_id = $2",
-            [newUser.user.id, anonymousUser.user.id]
+            [newUser.user.id, anonymousUser.user.id],
           );
-          console.log(`Successfully migrated conversations from ${anonymousUser.user.id} to ${newUser.user.id}`);
+          console.log(
+            `Successfully migrated conversations from ${anonymousUser.user.id} to ${newUser.user.id}`,
+          );
         } catch (e) {
-          console.error("Failed to migrate conversations during account link", e);
+          console.error(
+            "Failed to migrate conversations during account link",
+            e,
+          );
         }
       },
     }),
