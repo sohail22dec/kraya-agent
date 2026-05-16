@@ -1,17 +1,17 @@
 import { Message, Conversation } from "@/types/chat";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "http://localhost:8000";
 
-// ─── REST API functions (used by TanStack Query) ─────────────────────────────
+// ─── REST API functions (used by TanStack Query) ──────────────────────────────
 
 export async function fetchConversations(): Promise<Conversation[]> {
-    const res = await fetch(`${API_BASE}/conversations`);
+    const res = await fetch(`${API_BASE}/conversations`, { credentials: "include" });
     if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
     return res.json();
 }
 
 export async function fetchConversation(id: string): Promise<Conversation> {
-    const res = await fetch(`${API_BASE}/conversations/${id}`);
+    const res = await fetch(`${API_BASE}/conversations/${id}`, { credentials: "include" });
     if (!res.ok) throw new Error(`Failed to fetch conversation: ${res.status}`);
     return res.json();
 }
@@ -29,24 +29,36 @@ export async function createConversation(title: string): Promise<Conversation> {
 export async function deleteConversationApi(id: string): Promise<void> {
     const res = await fetch(`${API_BASE}/conversations/${id}`, {
         method: "DELETE",
+        credentials: "include",
     });
     if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
 }
 
-// ─── Query Keys (single source of truth) ─────────────────────────────────────
+// ─── Query Keys (single source of truth) ──────────────────────────────────────
 
 export const queryKeys = {
     conversations: ["conversations"] as const,
     conversation: (id: string) => ["conversations", id] as const,
 };
 
-// ─── Streaming (NOT via TanStack Query — SSE needs raw fetch) ────────────────
-// LangGraph streams tokens over SSE; TanStack Query can't subscribe to these.
-// We use a raw async generator here and manage state in useChat.ts.
+// ─── SSE Streaming callbacks ───────────────────────────────────────────────────
+// The new SSE protocol sends typed events:
+//   { type: "content",  content: "<text chunk>" }  — final answer / report chunks
+//   { type: "status",   content: "<label>" }        — research progress indicator
+//   { type: "queries",  content: ["q1", "q2"] }     — planned sub-queries
+//   { type: "route",    content: "research" | "conversational" }
+//   { type: "error",    content: "<message>" }
+
+export interface StreamCallbacks {
+    onContent: (chunk: string) => void;
+    onStatus?: (label: string) => void;
+    onQueries?: (queries: string[]) => void;
+    onRoute?: (route: string) => void;
+}
 
 export async function* streamMessage(
     messages: Message[],
-    onChunk: (chunk: string) => void,
+    callbacks: StreamCallbacks,
     threadId?: string,
     signal?: AbortSignal
 ): AsyncGenerator<string> {
@@ -56,6 +68,7 @@ export async function* streamMessage(
             "Content-Type": "application/json",
             Accept: "text/event-stream",
         },
+        credentials: "include",
         body: JSON.stringify({
             messages: messages.map((m) => ({
                 role: m.role,
@@ -86,36 +99,45 @@ export async function* streamMessage(
             buffer = lines.pop() || "";
 
             for (const line of lines) {
-                if (line.startsWith("data: ")) {
-                    const data = line.slice(6).trim();
-                    if (data === "[DONE]") return;
-                    try {
-                        const chunk = JSON.parse(data);
-                        // Handle different LangGraph token formats
-                        const token =
-                            chunk.content ??
-                            chunk.output ??
-                            chunk.text ??
-                            (typeof chunk === "string" ? chunk : null);
-                        if (token) {
-                            onChunk(token);
-                            yield token;
-                        }
-                    } catch {
-                        if (data) {
-                            onChunk(data);
-                            yield data;
-                        }
-                    }
+                if (!line.startsWith("data: ")) continue;
+                const data = line.slice(6).trim();
+                if (data === "[DONE]") return;
+
+                let event;
+                try {
+                    event = JSON.parse(data);
+                } catch (parseErr) {
+                    // Not JSON — skip silently
+                    continue;
+                }
+
+                const { type, content } = event;
+
+                if (type === "content" && typeof content === "string") {
+                    callbacks.onContent(content);
+                    yield content;
+                } else if (type === "status" && callbacks.onStatus) {
+                    callbacks.onStatus(content as string);
+                } else if (type === "queries" && callbacks.onQueries) {
+                    callbacks.onQueries(content as string[]);
+                } else if (type === "route" && callbacks.onRoute) {
+                    callbacks.onRoute(content as string);
+                } else if (type === "error") {
+                    throw new Error(content as string);
+                }
+                // Legacy fallback: old { content: "..." } format without type
+                else if (!type && typeof event.content === "string") {
+                    callbacks.onContent(event.content);
+                    yield event.content;
                 }
             }
         }
     } else {
-        // Fallback: plain JSON response from LangGraph invoke
+        // Fallback: plain JSON response
         const data = await response.json();
         const content =
             data.output ?? data.content ?? data.response ?? JSON.stringify(data);
-        onChunk(content);
+        callbacks.onContent(content);
         yield content;
     }
 }
