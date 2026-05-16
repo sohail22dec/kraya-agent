@@ -9,8 +9,8 @@ async def get_current_user(request: Request) -> dict:
     Returns the user dict or raises 401.
     """
     # Better Auth sets a cookie named 'better-auth.session_token'
-    # The cookie value includes a signature (token.signature), but the DB only stores the token.
-    raw_token = request.cookies.get("better-auth.session_token")
+    # On HTTPS (production), it often adds a '__Secure-' prefix.
+    raw_token = request.cookies.get("better-auth.session_token") or request.cookies.get("__Secure-better-auth.session_token")
     session_token = raw_token.split(".")[0] if raw_token else None
     
     print(f"[Auth Debug] Incoming session token: {session_token}")
