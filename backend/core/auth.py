@@ -1,68 +1,68 @@
 from fastapi import HTTPException, Request, status
-import httpx
-import os
-
-
-BETTER_AUTH_URL = os.getenv("BETTER_AUTH_URL", "http://localhost:3000")
+from psycopg_pool import AsyncConnectionPool
 
 
 async def get_current_user(request: Request) -> dict:
     """
-    FastAPI dependency that validates the Better Auth session by calling
-    the Better Auth /api/auth/get-session endpoint on the frontend.
-    This is the correct approach for cross-domain auth (Vercel + Render).
+    FastAPI dependency that validates the Better Auth session.
+    Reads the Bearer token from the Authorization header (cross-domain safe),
+    then falls back to the cookie-based approach for local development.
     Returns the user dict or raises 401.
     """
-    # Forward all cookies from the incoming request to Better Auth
-    cookie_header = request.headers.get("cookie", "")
+    session_token = None
 
-    print(f"[Auth Debug] Forwarding cookie header: {cookie_header[:80]}...")
+    # 1. Try Authorization Bearer header first (works cross-domain)
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        session_token = auth_header[7:]  # Strip "Bearer " prefix
+        print(f"[Auth Debug] Using Bearer token: {session_token[:20]}...")
 
-    if not cookie_header:
-        print("[Auth Debug] No cookies found in request.")
+    # 2. Fall back to cookie (for local development)
+    if not session_token:
+        raw_token = (
+            request.cookies.get("better-auth.session_token")
+            or request.cookies.get("__Secure-better-auth.session_token")
+        )
+        session_token = raw_token.split(".")[0] if raw_token else None
+        if session_token:
+            print(f"[Auth Debug] Using cookie token: {session_token[:20]}...")
+
+    if not session_token:
+        print("[Auth Debug] No session token found in headers or cookies.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
 
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(
-                f"{BETTER_AUTH_URL}/api/auth/get-session",
-                headers={"cookie": cookie_header},
-                timeout=10.0,
-            )
-        except httpx.RequestError as e:
-            print(f"[Auth Debug] Failed to reach Better Auth: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Auth service unreachable",
-            )
+    pool: AsyncConnectionPool = request.app.state.pool
 
-    print(f"[Auth Debug] Better Auth response status: {resp.status_code}")
+    async with pool.connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT s."userId", u.email, u.name, u."isAnonymous"
+                FROM session s
+                JOIN "user" u ON u.id = s."userId"
+                WHERE s.token = %s AND s."expiresAt" > NOW()
+                """,
+                (session_token,),
+            )
+            row = await cur.fetchone()
+            print(f"[Auth Debug] Database lookup result: {row}")
 
-    if resp.status_code != 200:
-        print(f"[Auth Debug] Better Auth returned non-200: {resp.text}")
+    if not row:
+        print("[Auth Debug] Session expired or invalid (not found in DB).")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Session expired or invalid",
         )
 
-    data = resp.json()
-    print(f"[Auth Debug] Session data: {data}")
-
-    if not data or not data.get("user"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired or invalid",
-        )
-
-    user = data["user"]
+    user_id, email, name, is_anonymous = row
     return {
-        "id": user.get("id"),
-        "email": user.get("email"),
-        "name": user.get("name"),
-        "is_anonymous": user.get("isAnonymous", False),
+        "id": user_id,
+        "email": email,
+        "name": name,
+        "is_anonymous": bool(is_anonymous),
     }
 
 

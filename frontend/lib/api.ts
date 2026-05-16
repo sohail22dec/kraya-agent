@@ -1,25 +1,47 @@
 import { Message, Conversation } from "@/types/chat";
+import { authClient } from "@/lib/auth-client";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+// ─── Helper: get auth headers ─────────────────────────────────────────────────
+// Instead of relying on cross-domain cookies (which browsers block),
+// we get the session token from Better Auth and pass it as a Bearer token.
+async function getAuthHeaders(): Promise<HeadersInit> {
+    const session = await authClient.getSession();
+    const token = session?.data?.session?.token;
+    if (token) {
+        return { Authorization: `Bearer ${token}` };
+    }
+    return {};
+}
 
 // ─── REST API functions (used by TanStack Query) ──────────────────────────────
 
 export async function fetchConversations(): Promise<Conversation[]> {
-    const res = await fetch(`${API_BASE}/conversations`, { credentials: "include" });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/conversations`, {
+        headers,
+        credentials: "include",
+    });
     if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.status}`);
     return res.json();
 }
 
 export async function fetchConversation(id: string): Promise<Conversation> {
-    const res = await fetch(`${API_BASE}/conversations/${id}`, { credentials: "include" });
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/conversations/${id}`, {
+        headers,
+        credentials: "include",
+    });
     if (!res.ok) throw new Error(`Failed to fetch conversation: ${res.status}`);
     return res.json();
 }
 
 export async function createConversation(title: string): Promise<Conversation> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/conversations`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ title }),
     });
     if (!res.ok) throw new Error(`Failed to create conversation: ${res.status}`);
@@ -27,8 +49,10 @@ export async function createConversation(title: string): Promise<Conversation> {
 }
 
 export async function deleteConversationApi(id: string): Promise<void> {
+    const headers = await getAuthHeaders();
     const res = await fetch(`${API_BASE}/conversations/${id}`, {
         method: "DELETE",
+        headers,
         credentials: "include",
     });
     if (!res.ok) throw new Error(`Failed to delete conversation: ${res.status}`);
@@ -62,11 +86,13 @@ export async function* streamMessage(
     threadId?: string,
     signal?: AbortSignal
 ): AsyncGenerator<string> {
+    const authHeaders = await getAuthHeaders();
     const response = await fetch(`${API_BASE}/chat`, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
+            ...authHeaders,
         },
         credentials: "include",
         body: JSON.stringify({
