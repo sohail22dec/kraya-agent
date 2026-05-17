@@ -71,6 +71,8 @@ async def chatbot(state: State, config: RunnableConfig):
         "Your name is Kraya Agent. If asked about your identity or name, "
         "always identify as Kraya Agent. Never refer to yourself as Llama, "
         "ChatGPT, or any other LLM. "
+        "IMPORTANT: When using tools, you MUST use the native tool calling schema. "
+        "NEVER output XML tags like `<function=...>` or inline JSON in your text response."
     )
 
     summary = state.get("summary", "")
