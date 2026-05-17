@@ -23,6 +23,11 @@ export const auth = betterAuth({
       secure: true,
     },
   },
+  trustedOrigins: [
+    "https://kraya-agent.vercel.app",
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+    "http://localhost:3000"
+  ].filter(Boolean),
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
