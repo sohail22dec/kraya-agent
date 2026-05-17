@@ -13,7 +13,9 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as never);
 
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL:
+    process.env.BETTER_AUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000"),
   secret: process.env.BETTER_AUTH_SECRET || "fallback-secret",
   advanced: {
     defaultCookieAttributes: {
