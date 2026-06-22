@@ -3,8 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 // Manually parse .env since dotenvx may intercept dotenv
-function loadEnv() {
-  const envPath = path.resolve(process.cwd(), ".env");
+function loadEnv(filename: string) {
+  const envPath = path.resolve(process.cwd(), filename);
   if (!fs.existsSync(envPath)) return;
   const content = fs.readFileSync(envPath, "utf-8");
   for (const line of content.split("\n")) {
@@ -18,10 +18,11 @@ function loadEnv() {
   }
 }
 
-loadEnv();
+loadEnv(".env.local");
+loadEnv(".env");
 
 const url = process.env.DATABASE_URL;
-if (!url) throw new Error("DATABASE_URL is not set in .env");
+if (!url) throw new Error("DATABASE_URL is not set in .env or .env.local");
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
