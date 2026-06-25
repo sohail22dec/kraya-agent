@@ -26,7 +26,6 @@ async def router_node(state: State) -> dict:
             break
 
     route = await classify_query(last_user_content)
-    print(f"[Router] Route decision: '{route}' for: '{last_user_content[:60]}'")
     return {"route": route}
 
 
@@ -188,7 +187,3 @@ def after_tools_condition(state: State) -> Literal["chatbot", "export_agent"]:
     if route == "export":
         return "export_agent"
     return "chatbot"
-
-
-def after_prune_condition(state: State):
-    return END

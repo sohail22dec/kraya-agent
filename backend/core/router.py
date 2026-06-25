@@ -52,5 +52,4 @@ async def classify_query(user_message: str) -> str:
             return "research"
         return route
     except Exception as e:
-        print(f"[Router] Classification error: {e}. Defaulting to 'research'.")
         return "research"
