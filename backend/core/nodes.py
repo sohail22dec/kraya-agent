@@ -12,10 +12,9 @@ from langgraph.prebuilt import tools_condition
 # ─── Router Node ──────────────────────────────────────────────────────────────
 
 
-async def router_node(state: State) -> dict:
+async def orchestrator(state: State) -> dict:
     """
-    Classifies the latest user message as 'conversational' or 'research'.
-    The result is stored in state['route'] and used by the conditional edge.
+    Classifies the latest user message and determines the next node to route to.
     """
     messages = state["messages"]
     # Find the last human message
@@ -26,19 +25,21 @@ async def router_node(state: State) -> dict:
             break
 
     route = await classify_query(last_user_content)
-    return {"route": route}
-
-
-def route_condition(
-    state: State,
-) -> Literal["chatbot", "research_node", "export_agent"]:
-    """Reads the route set by router_node and directs the graph accordingly."""
-    route = state.get("route", "conversational")
+    
     if route == "research":
-        return "research_node"
-    if route == "export":
-        return "export_agent"
-    return "chatbot"
+        next_node = "research_node"
+    elif route == "export":
+        next_node = "export_agent"
+    else:
+        next_node = "chatbot"
+        
+    return {"route": route, "next_node": next_node}
+
+
+def route_from_orchestrator(state: State) -> str:
+    """Reads the 'next_node' key set by the orchestrator and returns it."""
+    next_node = state.get("next_node")
+    return next_node or END
 
 
 # ─── Research Node ────────────────────────────────────────────────────────────
@@ -161,11 +162,11 @@ async def prune_messages(state: State):
 
 def summarization_condition(
     state: State,
-) -> Literal["summarize_conversation", "router_node"]:
+) -> Literal["summarize_conversation", "orchestrator"]:
     messages = state["messages"]
     if len(messages) > 4:
         return "summarize_conversation"
-    return "router_node"
+    return "orchestrator"
 
 
 def agent_condition(state: State) -> Literal["tools", "prune_messages"]:

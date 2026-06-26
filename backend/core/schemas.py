@@ -21,6 +21,8 @@ class State(TypedDict):
     summary: str
     # Routing decision: "conversational" or "research"
     route: Optional[str]
+    # Next node for orchestrator routing
+    next_node: Optional[str]
     # Research pipeline intermediate data
     research_steps: Optional[List[str]]    # status labels emitted during research
     research_queries: Optional[List[str]]  # sub-queries planned by the research agent
